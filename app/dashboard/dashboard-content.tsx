@@ -67,16 +67,24 @@ function TenantCard({ tenant }: { tenant: Tenant }) {
           <p className="text-sm text-gray-500">{tenant.displayName}</p>
         </div>
       </div>
-      <form action={formAction}>
-        <input type="hidden" name="subdomain" value={tenant.subdomain} />
-        <button
-          type="submit"
-          disabled={isPending}
-          className="px-3 py-1 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+      <div className="flex items-center gap-2">
+        <Link
+          href={`/dashboard/edit/${tenant.subdomain}`}
+          className="px-3 py-1 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
         >
-          {isPending ? 'Deleting...' : 'Delete'}
-        </button>
-      </form>
+          Edit
+        </Link>
+        <form action={formAction}>
+          <input type="hidden" name="subdomain" value={tenant.subdomain} />
+          <button
+            type="submit"
+            disabled={isPending}
+            className="px-3 py-1 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+          >
+            {isPending ? 'Deleting...' : 'Delete'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

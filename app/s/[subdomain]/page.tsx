@@ -11,6 +11,9 @@ interface PageProps {
   params: Promise<{ subdomain: string }>;
 }
 
+// Enable ISR with 60 second revalidation
+export const revalidate = 60;
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { subdomain } = await params;
   const subdomainData = await getSubdomainData(subdomain);

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { SearchBar } from '@/components/search-bar';
 
 export default async function Home() {
   const supabase = await createClient();
@@ -37,6 +38,9 @@ export default async function Home() {
             Build a beautiful portfolio website with your own custom subdomain.
             No coding required.
           </p>
+          <div className="mb-12">
+            <SearchBar />
+          </div>
           <div className="flex gap-4 justify-center">
             <Link
               href="/login"

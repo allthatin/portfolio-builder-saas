@@ -75,3 +75,16 @@
 - [ ] Add wildcard domain support
 - [ ] Implement all features from original repo
 
+
+
+
+## Phase 10: Additional Features Implementation
+- [x] Run database migration (pnpm db:push)
+- [x] Implement Supabase Storage integration for image uploads
+- [x] Implement search functionality (database-based)
+- [x] Implement ISR for portfolio pages
+- [x] Optimize API routes with Vercel Edge Functions
+- [x] Create portfolio content editor UI
+- [x] Add image upload component
+- [x] Add search bar to homepage
+
