@@ -1,19 +1,22 @@
 import { createClient } from '@/lib/supabase/server';
-import { db } from '@/lib/db';
-import { portfolios, tenants } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { supabaseAdmin } from '@/lib/db/client';
+import { getPortfolioById, getTenantById, getUserByProviderId } from '@/lib/db';
+import type { Portfolio } from '@/lib/db/types';
 import { NextRequest, NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
 
 export const runtime = 'edge';
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+interface RouteParams {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const portfolioId = parseInt(id);
+    const portfolioId = parseInt(id, 10);
 
     if (isNaN(portfolioId)) {
       return NextResponse.json({ error: 'Invalid portfolio ID' }, { status: 400 });
@@ -28,45 +31,109 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { title, description, content, published } = body;
-
     // Get portfolio and verify ownership
-    const portfolio = await db.query.portfolios.findFirst({
-      where: (portfolios, { eq }) => eq(portfolios.id, portfolioId),
-    });
+    const portfolio = await getPortfolioById(portfolioId);
 
     if (!portfolio) {
       return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
     }
 
-    const tenant = await db.query.tenants.findFirst({
-      where: (tenants, { eq }) => eq(tenants.id, portfolio.tenantId),
-    });
+    const tenant = await getTenantById(portfolio.tenant_id);
 
     if (!tenant) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
-    const dbUser = await db.query.users.findFirst({
-      where: (users, { eq }) => eq(users.providerId, user.id),
-    });
+    const dbUser = await getUserByProviderId(user.id);
 
-    if (!dbUser || tenant.ownerId !== dbUser.id) {
+    if (!dbUser || tenant.owner_id !== dbUser.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Update portfolio
-    await db
-      .update(portfolios)
-      .set({
-        title,
-        description,
-        content,
-        published: published ? 1 : 0,
-        updatedAt: new Date(),
-      })
-      .where(eq(portfolios.id, portfolioId));
+    const body = await request.json();
+    const { title, description, content, template, published, seo_meta } = body;
+
+    const updateData: any = {};
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (content !== undefined) updateData.content = content;
+    if (template !== undefined) updateData.template = template;
+    if (published !== undefined) updateData.published = published;
+    if (seo_meta !== undefined) updateData.seo_meta = seo_meta;
+
+    const { data: updatedPortfolio, error } = await supabaseAdmin
+      .from('portfolios')
+      .update(updateData)
+      .eq('id', portfolioId)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    // Invalidate cache
+    try {
+      await redis.del(`subdomain:${tenant.subdomain}`);
+      await redis.del(`portfolio:tenant:${tenant.id}`);
+    } catch (error) {
+      console.error('Redis cache invalidation error:', error);
+    }
+
+    return NextResponse.json(updatedPortfolio);
+  } catch (error) {
+    console.error('Error updating portfolio:', error);
+    return NextResponse.json({ error: 'Failed to update portfolio' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  try {
+    const { id } = await params;
+    const portfolioId = parseInt(id, 10);
+
+    if (isNaN(portfolioId)) {
+      return NextResponse.json({ error: 'Invalid portfolio ID' }, { status: 400 });
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get portfolio and verify ownership
+    const portfolio = await getPortfolioById(portfolioId);
+
+    if (!portfolio) {
+      return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
+    }
+
+    const tenant = await getTenantById(portfolio.tenant_id);
+
+    if (!tenant) {
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const dbUser = await getUserByProviderId(user.id);
+
+    if (!dbUser || tenant.owner_id !== dbUser.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Delete portfolio
+    const { error } = await supabaseAdmin
+      .from('portfolios')
+      .delete()
+      .eq('id', portfolioId);
+
+    if (error) {
+      throw error;
+    }
 
     // Invalidate cache
     try {
@@ -78,8 +145,8 @@ export async function PATCH(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Update error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error deleting portfolio:', error);
+    return NextResponse.json({ error: 'Failed to delete portfolio' }, { status: 500 });
   }
 }
 

@@ -4,9 +4,9 @@ import { redis } from '@/lib/redis';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { db } from '@/lib/db';
-import { tenants, portfolios } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { supabaseAdmin } from '@/lib/db/client';
+import { getUserByProviderId, getTenantBySubdomain } from '@/lib/db';
+import type { Tenant, Portfolio } from '@/lib/db/types';
 
 // Define action state types
 interface SubdomainActionState {
@@ -99,13 +99,9 @@ export async function createSubdomainAction(
   }
 
   // Check if subdomain exists in database
-  const existingTenant = await db
-    .select()
-    .from(tenants)
-    .where(eq(tenants.subdomain, sanitizedSubdomain))
-    .limit(1);
+  const existingTenant = await getTenantBySubdomain(sanitizedSubdomain);
 
-  if (existingTenant.length > 0) {
+  if (existingTenant) {
     return {
       subdomain,
       icon,
@@ -116,9 +112,7 @@ export async function createSubdomainAction(
   }
 
   // Get user from database
-  const dbUser = await db.query.users.findFirst({
-    where: (users, { eq }) => eq(users.providerId, user.id),
-  });
+  const dbUser = await getUserByProviderId(user.id);
 
   if (!dbUser) {
     return { success: false, error: 'User not found in database' };
@@ -126,24 +120,35 @@ export async function createSubdomainAction(
 
   try {
     // Create tenant in database
-    const [tenant] = await db
-      .insert(tenants)
-      .values({
+    const { data: tenant, error: tenantError } = await supabaseAdmin
+      .from('tenants')
+      .insert({
         subdomain: sanitizedSubdomain,
-        displayName,
-        ownerId: dbUser.id,
+        display_name: displayName,
+        owner_id: dbUser.id,
         emoji: icon,
       })
-      .$returningId();
+      .select()
+      .single();
+
+    if (tenantError || !tenant) {
+      throw tenantError || new Error('Failed to create tenant');
+    }
 
     // Create default portfolio
-    await db.insert(portfolios).values({
-      tenantId: tenant.id,
-      title: displayName,
-      description: `Welcome to ${displayName}'s portfolio`,
-      template: 'default',
-      published: 1,
-    });
+    const { error: portfolioError } = await supabaseAdmin
+      .from('portfolios')
+      .insert({
+        tenant_id: tenant.id,
+        title: displayName,
+        description: `Welcome to ${displayName}'s portfolio`,
+        template: 'default',
+        published: true,
+      });
+
+    if (portfolioError) {
+      throw portfolioError;
+    }
 
     // Cache subdomain data in Redis
     const cacheData: CachedSubdomainData = {
@@ -186,16 +191,25 @@ export async function deleteSubdomainAction(
     // Delete from Redis
     await redis.del(`subdomain:${subdomain}`);
 
-    // Delete from database
-    const tenant = await db.query.tenants.findFirst({
-      where: (tenants, { eq }) => eq(tenants.subdomain, subdomain),
-    });
+    // Delete from database (portfolios will be cascade deleted)
+    const tenant = await getTenantBySubdomain(subdomain);
 
     if (tenant) {
-      // Delete portfolios first (foreign key constraint)
-      await db.delete(portfolios).where(eq(portfolios.tenantId, tenant.id));
-      // Delete tenant
-      await db.delete(tenants).where(eq(tenants.id, tenant.id));
+      // Verify ownership
+      const dbUser = await getUserByProviderId(user.id);
+      if (!dbUser || tenant.owner_id !== dbUser.id) {
+        return { success: false, error: 'You do not have permission to delete this subdomain' };
+      }
+
+      // Delete tenant (portfolios will be cascade deleted due to foreign key constraint)
+      const { error } = await supabaseAdmin
+        .from('tenants')
+        .delete()
+        .eq('id', tenant.id);
+
+      if (error) {
+        throw error;
+      }
     }
 
     revalidatePath('/dashboard');
@@ -205,3 +219,4 @@ export async function deleteSubdomainAction(
     return { success: false, error: 'Failed to delete subdomain' };
   }
 }
+

@@ -45,7 +45,7 @@ export async function cacheSet(key: string, value: any, ttlSeconds?: number): Pr
   try {
     const serialized = JSON.stringify(value);
     if (ttlSeconds) {
-      await redis.setex(key, ttlSeconds, serialized);
+      await redis.setEx(key, ttlSeconds, serialized);
     } else {
       await redis.set(key, serialized);
     }

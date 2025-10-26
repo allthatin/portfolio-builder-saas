@@ -3,9 +3,7 @@ import type { Metadata } from 'next/types';
 import { notFound } from 'next/navigation';
 import { getSubdomainData } from '@/lib/subdomains';
 import { protocol, rootDomain } from '@/lib/utils';
-import { db } from '@/lib/db';
-import { portfolios } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { getPortfoliosByTenantId } from '@/lib/db';
 
 interface PageProps {
   params: Promise<{ subdomain: string }>;
@@ -39,9 +37,8 @@ export default async function SubdomainPage({ params }: PageProps) {
   }
 
   // Fetch portfolio data
-  const portfolio = await db.query.portfolios.findFirst({
-    where: (portfolios, { eq }) => eq(portfolios.tenantId, subdomainData.tenantId),
-  });
+  const portfolios = await getPortfoliosByTenantId(subdomainData.tenantId);
+  const portfolio = portfolios[0];
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-blue-50 to-white p-4">

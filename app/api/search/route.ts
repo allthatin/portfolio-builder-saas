@@ -1,8 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { portfolios, tenants } from '@/lib/db/schema';
-import { like, or, eq } from 'drizzle-orm';
+import { supabaseAdmin } from '@/lib/db/client';
+import type { SearchResult } from '@/lib/db/types';
 
 export const runtime = 'edge';
 
@@ -15,59 +14,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ results: [] });
     }
 
-    // Search in portfolios and tenants
-    const searchPattern = `%${query}%`;
+    // Use the PostgreSQL full-text search function
+    const { data: results, error } = await supabaseAdmin
+      .rpc('search_portfolios_and_tenants', {
+        search_query: query.trim(),
+      });
 
-    // Search tenants by subdomain or display name
-    const tenantResults = await db
-      .select()
-      .from(tenants)
-      .where(
-        or(
-          like(tenants.subdomain, searchPattern),
-          like(tenants.displayName, searchPattern)
-        )
-      )
-      .limit(10);
+    if (error) {
+      console.error('Search error:', error);
+      return NextResponse.json({ error: 'Search failed' }, { status: 500 });
+    }
 
-    // Search portfolios by title, description, or content
-    const portfolioResults = await db
-      .select({
-        portfolio: portfolios,
-        tenant: tenants,
-      })
-      .from(portfolios)
-      .innerJoin(tenants, eq(portfolios.tenantId, tenants.id))
-      .where(
-        or(
-          like(portfolios.title, searchPattern),
-          like(portfolios.description, searchPattern),
-          like(portfolios.content, searchPattern)
-        )
-      )
-      .limit(10);
+    // Format results to match the expected structure
+    const formattedResults = (results || []).map((result: SearchResult) => ({
+      type: result.result_type,
+      id: result.id,
+      subdomain: result.subdomain,
+      displayName: result.display_name,
+      emoji: result.emoji,
+      ...(result.result_type === 'portfolio' && {
+        title: result.title,
+        description: result.description,
+      }),
+    }));
 
-    // Combine and format results
-    const results = [
-      ...tenantResults.map((tenant) => ({
-        type: 'tenant' as const,
-        id: tenant.id,
-        subdomain: tenant.subdomain,
-        displayName: tenant.displayName,
-        emoji: tenant.emoji,
-      })),
-      ...portfolioResults.map(({ portfolio, tenant }) => ({
-        type: 'portfolio' as const,
-        id: portfolio.id,
-        subdomain: tenant.subdomain,
-        displayName: tenant.displayName,
-        emoji: tenant.emoji,
-        title: portfolio.title,
-        description: portfolio.description,
-      })),
-    ];
-
-    return NextResponse.json({ results });
+    return NextResponse.json({ results: formattedResults });
   } catch (error) {
     console.error('Search error:', error);
     return NextResponse.json({ error: 'Search failed' }, { status: 500 });

@@ -1,6 +1,6 @@
 # Portfolio Builder SaaS
 
-A modern, multi-tenant portfolio builder built with Next.js 15, Supabase, and Redis. Create beautiful portfolio websites with custom subdomains in minutes.
+A modern, multi-tenant portfolio builder built with Next.js 15, Supabase (PostgreSQL + Vector), and Redis. Create beautiful portfolio websites with custom subdomains in minutes.
 
 ## Features
 
@@ -8,19 +8,20 @@ A modern, multi-tenant portfolio builder built with Next.js 15, Supabase, and Re
 - 🔐 **OAuth Authentication** - Sign in with Google or Figma (no email/password)
 - 📝 **Portfolio Editor** - Easy-to-use content editor with image uploads
 - 🖼️ **Image Upload** - Supabase Storage integration for image hosting
-- 🔍 **Search** - Full-text search across all portfolios
+- 🔍 **Full-Text Search** - PostgreSQL full-text search across all portfolios
+- 🤖 **Vector Search Ready** - pgvector extension enabled for semantic search
 - ⚡ **ISR (Incremental Static Regeneration)** - Fast page loads with automatic revalidation
 - 🌐 **Edge Functions** - Optimized API routes using Vercel Edge Runtime
 - 💾 **Redis Caching** - Fast data access with Redis caching layer
-- 📊 **Database** - MySQL/TiDB with Drizzle ORM
+- 📊 **Database** - Supabase PostgreSQL with Row Level Security
 
 ## Tech Stack
 
 - **Framework:** Next.js 15 (App Router)
 - **Authentication:** Supabase Auth (Google, Figma OAuth)
-- **Database:** MySQL/TiDB with Drizzle ORM
+- **Database:** Supabase PostgreSQL with pgvector
 - **Storage:** Supabase Storage
-- **Caching:** Redis (not Upstash)
+- **Caching:** Redis
 - **Styling:** Tailwind CSS
 - **Deployment:** Vercel
 
@@ -29,7 +30,6 @@ A modern, multi-tenant portfolio builder built with Next.js 15, Supabase, and Re
 ### Prerequisites
 
 - Node.js 18+ and pnpm
-- MySQL/TiDB database
 - Redis server
 - Supabase project
 
@@ -41,9 +41,7 @@ Create a `.env.local` file with the following variables:
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-
-# Database
-DATABASE_URL=mysql://user:password@host:port/database
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 # Redis
 REDIS_URL=redis://localhost:6379
@@ -65,34 +63,57 @@ cd portfolio-builder-saas
 pnpm install
 ```
 
-3. Run database migrations:
-```bash
-pnpm db:push
-```
+3. Set up Supabase:
+   - Create a new Supabase project at [supabase.com](https://supabase.com)
+   - Run the SQL migration from `supabase/migrations/001_initial_schema.sql` in the Supabase SQL Editor
+   - This will create all necessary tables, indexes, RLS policies, and functions
 
-4. Start the development server:
+4. Configure Supabase:
+   - Enable OAuth providers (Google, Figma) in Authentication → Providers
+   - Create a storage bucket named `portfolio-images` (public)
+   - Add your domain to Site URL and Redirect URLs in Authentication → Settings
+
+5. Start the development server:
 ```bash
 pnpm dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+6. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Supabase Setup
 
-1. Create a new Supabase project at [supabase.com](https://supabase.com)
+#### 1. Database Schema
 
-2. Enable OAuth providers:
-   - Go to Authentication → Providers
-   - Enable Google and Figma
-   - Add OAuth credentials from Google Cloud Console and Figma
+Run the migration file `supabase/migrations/001_initial_schema.sql` in your Supabase SQL Editor. This will:
+- Create `users`, `tenants`, and `portfolios` tables
+- Set up foreign key constraints and indexes
+- Enable pgvector extension for semantic search
+- Create full-text search indexes
+- Set up Row Level Security (RLS) policies
+- Create a search function for efficient full-text search
 
-3. Create a storage bucket:
-   - Go to Storage
-   - Create a new public bucket named `portfolio-images`
+#### 2. OAuth Providers
 
-4. Set up redirect URLs:
-   - Go to Authentication → Settings
-   - Add your domain to Site URL and Redirect URLs
+1. Go to Authentication → Providers in Supabase Dashboard
+2. Enable Google:
+   - Get OAuth credentials from [Google Cloud Console](https://console.cloud.google.com/)
+   - Add authorized redirect URI: `https://your-project.supabase.co/auth/v1/callback`
+3. Enable Figma:
+   - Get OAuth credentials from [Figma Developer Portal](https://www.figma.com/developers)
+   - Add redirect URI: `https://your-project.supabase.co/auth/v1/callback`
+
+#### 3. Storage Bucket
+
+1. Go to Storage in Supabase Dashboard
+2. Create a new public bucket named `portfolio-images`
+3. Set up storage policies to allow authenticated users to upload/delete their images
+
+#### 4. Environment Variables
+
+Get your Supabase credentials from Project Settings → API:
+- `NEXT_PUBLIC_SUPABASE_URL`: Your project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your anon/public key
+- `SUPABASE_SERVICE_ROLE_KEY`: Your service role key (keep this secret!)
 
 ## Project Structure
 
@@ -102,7 +123,7 @@ portfolio-builder-saas/
 │   ├── api/              # API routes (Edge Functions)
 │   │   ├── upload/       # Image upload endpoint
 │   │   ├── portfolio/    # Portfolio CRUD
-│   │   ├── search/       # Search endpoint
+│   │   ├── search/       # Full-text search endpoint
 │   │   └── revalidate/   # ISR revalidation
 │   ├── auth/             # Authentication routes
 │   ├── dashboard/        # User dashboard
@@ -114,12 +135,20 @@ portfolio-builder-saas/
 │   ├── search-bar.tsx
 │   └── subdomain-form.tsx
 ├── lib/
-│   ├── db/               # Database schema and utilities
-│   ├── supabase/         # Supabase client and utilities
+│   ├── db/               # Database client and types
+│   │   ├── index.ts      # Supabase client
+│   │   └── types.ts      # TypeScript types
+│   ├── supabase/         # Supabase utilities
+│   │   ├── client.ts     # Browser client
+│   │   ├── server.ts     # Server client
+│   │   ├── middleware.ts # Auth middleware
+│   │   └── storage.ts    # Storage utilities
 │   ├── redis.ts          # Redis client
 │   ├── subdomains.ts     # Subdomain utilities
 │   └── utils.ts          # Helper functions
-└── drizzle/              # Database migrations
+└── supabase/
+    └── migrations/       # SQL migrations
+        └── 001_initial_schema.sql
 ```
 
 ## Key Features Explained
@@ -140,6 +169,24 @@ export function middleware(request: NextRequest) {
 }
 ```
 
+### Full-Text Search
+
+PostgreSQL full-text search with custom ranking function:
+
+```typescript
+// Uses the search_portfolios_and_tenants() function
+const { data } = await db.rpc('search_portfolios_and_tenants', {
+  search_query: query,
+});
+```
+
+### Row Level Security (RLS)
+
+Supabase RLS policies ensure data security:
+- Users can only modify their own data
+- Published portfolios are publicly viewable
+- Unpublished portfolios are only visible to owners
+
 ### ISR (Incremental Static Regeneration)
 
 Portfolio pages use ISR for optimal performance:
@@ -154,7 +201,7 @@ export const revalidate = 60; // Revalidate every 60 seconds
 API routes use Vercel Edge Runtime for low latency:
 
 ```typescript
-// app/api/upload/route.ts
+// app/api/search/route.ts
 export const runtime = 'edge';
 ```
 
@@ -167,6 +214,50 @@ Tenant data is cached in Redis for fast access:
 const cached = await redis.get(`subdomain:${subdomain}`);
 if (cached) return cached;
 ```
+
+## Database Schema
+
+### Users Table
+- `id` (BIGSERIAL, primary key)
+- `email` (VARCHAR 320, unique)
+- `name` (VARCHAR 255, nullable)
+- `avatar_url` (TEXT, nullable)
+- `provider` (VARCHAR 50) - 'google' or 'figma'
+- `provider_id` (VARCHAR 255, unique)
+- `created_at` (TIMESTAMP WITH TIME ZONE)
+- `updated_at` (TIMESTAMP WITH TIME ZONE)
+
+### Tenants Table
+- `id` (BIGSERIAL, primary key)
+- `subdomain` (VARCHAR 63, unique)
+- `display_name` (VARCHAR 255)
+- `owner_id` (BIGINT, foreign key → users.id)
+- `emoji` (VARCHAR 10, nullable)
+- `custom_domain` (VARCHAR 255, nullable)
+- `settings` (JSONB)
+- `created_at` (TIMESTAMP WITH TIME ZONE)
+- `updated_at` (TIMESTAMP WITH TIME ZONE)
+
+### Portfolios Table
+- `id` (BIGSERIAL, primary key)
+- `tenant_id` (BIGINT, foreign key → tenants.id)
+- `title` (VARCHAR 255)
+- `description` (TEXT, nullable)
+- `content` (TEXT, nullable)
+- `template` (VARCHAR 50, default 'default')
+- `published` (BOOLEAN, default false)
+- `seo_meta` (JSONB)
+- `content_embedding` (vector(1536), nullable) - For semantic search
+- `created_at` (TIMESTAMP WITH TIME ZONE)
+- `updated_at` (TIMESTAMP WITH TIME ZONE)
+
+## API Endpoints
+
+- `POST /api/upload` - Upload image to Supabase Storage
+- `PATCH /api/portfolio/[id]` - Update portfolio
+- `DELETE /api/portfolio/[id]` - Delete portfolio
+- `GET /api/search?q=query` - Full-text search portfolios
+- `POST /api/revalidate?path=/s/subdomain` - Revalidate ISR page
 
 ## Deployment
 
@@ -183,7 +274,7 @@ Add the following environment variables in your Vercel project settings:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `DATABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `REDIS_URL`
 - `NEXT_PUBLIC_ROOT_DOMAIN` (your production domain)
 
@@ -194,55 +285,25 @@ Add the following environment variables in your Vercel project settings:
    - Add an A record pointing to Vercel's IP
    - Add a wildcard CNAME record (`*.yourdomain.com`) pointing to your Vercel domain
 
-## Database Schema
+## Migration from MySQL + Drizzle
 
-```sql
--- Users table
-CREATE TABLE users (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  provider_id VARCHAR(255) NOT NULL UNIQUE,
-  email VARCHAR(320) NOT NULL,
-  name VARCHAR(255),
-  avatar_url TEXT,
-  provider VARCHAR(50) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+This project has been refactored from MySQL + Drizzle ORM to Supabase PostgreSQL. Key changes:
 
--- Tenants table
-CREATE TABLE tenants (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  subdomain VARCHAR(63) NOT NULL UNIQUE,
-  display_name VARCHAR(255) NOT NULL,
-  owner_id INT NOT NULL,
-  emoji VARCHAR(10),
-  custom_domain VARCHAR(255),
-  settings TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+1. **Database**: MySQL → PostgreSQL (Supabase)
+2. **ORM**: Drizzle ORM → Supabase Client
+3. **Search**: LIKE queries → PostgreSQL full-text search
+4. **Vector Search**: Added pgvector extension for future semantic search
+5. **Security**: Added Row Level Security (RLS) policies
+6. **Types**: Maintained TypeScript type safety with custom types
 
--- Portfolios table
-CREATE TABLE portfolios (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tenant_id INT NOT NULL,
-  title VARCHAR(255) NOT NULL,
-  description TEXT,
-  content TEXT,
-  template VARCHAR(50) DEFAULT 'default',
-  published INT DEFAULT 0,
-  seo_meta TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
+## Future Enhancements
 
-## API Endpoints
-
-- `POST /api/upload` - Upload image to Supabase Storage
-- `PATCH /api/portfolio/[id]` - Update portfolio
-- `GET /api/search?q=query` - Search portfolios
-- `POST /api/revalidate?path=/s/subdomain` - Revalidate ISR page
+- [ ] Implement semantic search using pgvector and OpenAI embeddings
+- [ ] Add real-time collaboration using Supabase Realtime
+- [ ] Custom domain management
+- [ ] Portfolio templates
+- [ ] Analytics dashboard
+- [ ] Export portfolio as static site
 
 ## Contributing
 

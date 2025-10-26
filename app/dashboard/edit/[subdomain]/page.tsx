@@ -1,8 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { db } from '@/lib/db';
-import { tenants, portfolios } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { getTenantBySubdomain, getUserByProviderId, getPortfoliosByTenantId } from '@/lib/db';
 import { PortfolioEditor } from './portfolio-editor';
 
 interface PageProps {
@@ -22,27 +20,22 @@ export default async function EditPortfolioPage({ params }: PageProps) {
   }
 
   // Get tenant
-  const tenant = await db.query.tenants.findFirst({
-    where: (tenants, { eq }) => eq(tenants.subdomain, subdomain),
-  });
+  const tenant = await getTenantBySubdomain(subdomain);
 
   if (!tenant) {
     redirect('/dashboard');
   }
 
   // Get user from database
-  const dbUser = await db.query.users.findFirst({
-    where: (users, { eq }) => eq(users.providerId, user.id),
-  });
+  const dbUser = await getUserByProviderId(user.id);
 
-  if (!dbUser || tenant.ownerId !== dbUser.id) {
+  if (!dbUser || tenant.owner_id !== dbUser.id) {
     redirect('/dashboard');
   }
 
   // Get portfolio
-  const portfolio = await db.query.portfolios.findFirst({
-    where: (portfolios, { eq }) => eq(portfolios.tenantId, tenant.id),
-  });
+  const portfolios = await getPortfoliosByTenantId(tenant.id);
+  const portfolio = portfolios[0];
 
   if (!portfolio) {
     redirect('/dashboard');
@@ -70,7 +63,7 @@ export default async function EditPortfolioPage({ params }: PageProps) {
             title: portfolio.title,
             description: portfolio.description || '',
             content: portfolio.content || '',
-            published: portfolio.published === 1,
+            published: portfolio.published,
           }}
         />
       </main>

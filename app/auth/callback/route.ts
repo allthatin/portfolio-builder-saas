@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { db } from '@/lib/db';
-import { users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { supabaseAdmin } from '@/lib/db/client';
+import { getUserByProviderId } from '@/lib/db';
+import type { User } from '@/lib/db/types';
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -24,32 +24,37 @@ export async function GET(request: Request) {
 
         try {
           // Check if user exists
-          const existingUser = await db
-            .select()
-            .from(users)
-            .where(eq(users.providerId, providerId))
-            .limit(1);
+          const existingUser = await getUserByProviderId(providerId);
 
-          if (existingUser.length === 0) {
+          if (!existingUser) {
             // Create new user
-            await db.insert(users).values({
-              email: user.email!,
-              name: user.user_metadata.full_name || user.user_metadata.name || null,
-              avatarUrl: user.user_metadata.avatar_url || null,
-              provider,
-              providerId,
-            });
-          } else {
-            // Update existing user
-            await db
-              .update(users)
-              .set({
+            const { error: insertError } = await supabaseAdmin
+              .from('users')
+              .insert({
                 email: user.email!,
                 name: user.user_metadata.full_name || user.user_metadata.name || null,
-                avatarUrl: user.user_metadata.avatar_url || null,
-                updatedAt: new Date(),
+                avatar_url: user.user_metadata.avatar_url || null,
+                provider,
+                provider_id: providerId,
+              });
+
+            if (insertError) {
+              console.error('[Auth] Error creating user:', insertError);
+            }
+          } else {
+            // Update existing user
+            const { error: updateError } = await supabaseAdmin
+              .from('users')
+              .update({
+                email: user.email!,
+                name: user.user_metadata.full_name || user.user_metadata.name || null,
+                avatar_url: user.user_metadata.avatar_url || null,
               })
-              .where(eq(users.providerId, providerId));
+              .eq('provider_id', providerId);
+
+            if (updateError) {
+              console.error('[Auth] Error updating user:', updateError);
+            }
           }
         } catch (dbError) {
           console.error('[Auth] Database error:', dbError);
