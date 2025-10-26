@@ -1,109 +1,82 @@
-import { db } from '@/lib/db';
-import { tenants, portfolios } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import Link from 'next/link';
+import type { Metadata } from 'next/types';
 import { notFound } from 'next/navigation';
-import { cacheGet, cacheSet } from '@/lib/redis';
+import { getSubdomainData } from '@/lib/subdomains';
+import { protocol, rootDomain } from '@/lib/utils';
+import { db } from '@/lib/db';
+import { portfolios } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 interface PageProps {
   params: Promise<{ subdomain: string }>;
 }
 
-export default async function TenantPage({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { subdomain } = await params;
-  
-  // Try to get from cache first
-  const cacheKey = `tenant:${subdomain}`;
-  let tenant = await cacheGet<any>(cacheKey);
+  const subdomainData = await getSubdomainData(subdomain);
 
-  if (!tenant) {
-    // Fetch from database
-    const result = await db
-      .select()
-      .from(tenants)
-      .where(eq(tenants.subdomain, subdomain))
-      .limit(1);
-
-    if (result.length === 0) {
-      notFound();
-    }
-
-    tenant = result[0];
-    // Cache for 5 minutes
-    await cacheSet(cacheKey, tenant, 300);
-  }
-
-  // Fetch portfolio
-  const portfolioCacheKey = `portfolio:tenant:${tenant.id}`;
-  let portfolio = await cacheGet<any>(portfolioCacheKey);
-
-  if (!portfolio) {
-    const portfolioResult = await db
-      .select()
-      .from(portfolios)
-      .where(eq(portfolios.tenantId, tenant.id))
-      .limit(1);
-
-    portfolio = portfolioResult[0] || null;
-    if (portfolio) {
-      await cacheSet(portfolioCacheKey, portfolio, 300);
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-4xl mx-auto px-4 py-16">
-        <div className="text-center mb-12">
-          {tenant.emoji && (
-            <div className="text-6xl mb-4">{tenant.emoji}</div>
-          )}
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            {tenant.displayName}
-          </h1>
-          <p className="text-lg text-gray-600">
-            @{tenant.subdomain}
-          </p>
-        </div>
-
-        {portfolio ? (
-          <div className="prose prose-lg max-w-none">
-            <h2 className="text-2xl font-semibold mb-4">{portfolio.title}</h2>
-            {portfolio.description && (
-              <p className="text-gray-700 mb-6">{portfolio.description}</p>
-            )}
-            {portfolio.content && (
-              <div className="whitespace-pre-wrap">{portfolio.content}</div>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No portfolio content yet.</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export async function generateMetadata({ params }: PageProps) {
-  const { subdomain } = await params;
-  
-  const result = await db
-    .select()
-    .from(tenants)
-    .where(eq(tenants.subdomain, subdomain))
-    .limit(1);
-
-  if (result.length === 0) {
+  if (!subdomainData) {
     return {
-      title: 'Not Found',
+      title: rootDomain,
     };
   }
 
-  const tenant = result[0];
-
   return {
-    title: `${tenant.displayName} - Portfolio`,
-    description: `Portfolio of ${tenant.displayName}`,
+    title: `${subdomainData.displayName} - Portfolio`,
+    description: `Portfolio page for ${subdomainData.displayName}`,
   };
+}
+
+export default async function SubdomainPage({ params }: PageProps) {
+  const { subdomain } = await params;
+  const subdomainData = await getSubdomainData(subdomain);
+
+  if (!subdomainData) {
+    notFound();
+  }
+
+  // Fetch portfolio data
+  const portfolio = await db.query.portfolios.findFirst({
+    where: (portfolios, { eq }) => eq(portfolios.tenantId, subdomainData.tenantId),
+  });
+
+  return (
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-blue-50 to-white p-4">
+      <div className="absolute top-4 right-4">
+        <Link
+          href={`${protocol}://${rootDomain}`}
+          className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          {rootDomain}
+        </Link>
+      </div>
+
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-2xl">
+          <div className="text-9xl mb-6">{subdomainData.emoji}</div>
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900 mb-3">
+            Welcome to {subdomainData.displayName}
+          </h1>
+          <p className="text-lg text-gray-600 mb-8">
+            {subdomain}.{rootDomain}
+          </p>
+
+          {portfolio && (
+            <div className="mt-12 text-left bg-white p-8 rounded-2xl shadow-lg">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-4">{portfolio.title}</h2>
+              {portfolio.description && (
+                <p className="text-gray-700 mb-6 leading-relaxed">{portfolio.description}</p>
+              )}
+              {portfolio.content && (
+                <div className="text-gray-600 whitespace-pre-wrap leading-relaxed">
+                  {portfolio.content}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 

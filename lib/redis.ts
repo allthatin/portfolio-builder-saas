@@ -1,20 +1,34 @@
-import Redis from 'ioredis';
+import { createClient, RedisClientType } from 'redis';
 
 const globalForRedis = globalThis as unknown as {
-  redis: Redis | undefined;
+  redis: RedisClientType | undefined;
 };
 
-export const redis =
-  globalForRedis.redis ??
-  new Redis(process.env.REDIS_URL!, {
-    maxRetriesPerRequest: 3,
-    retryStrategy(times) {
-      const delay = Math.min(times * 50, 2000);
-      return delay;
+let redis: RedisClientType;
+
+if (!globalForRedis.redis) {
+  redis = createClient({
+    url: process.env.REDIS_URL!,
+    socket: {
+      reconnectStrategy: (retries) => {
+        if (retries > 10) {
+          return new Error('Too many retries');
+        }
+        return Math.min(retries * 50, 2000);
+      },
     },
   });
 
-if (process.env.NODE_ENV !== 'production') globalForRedis.redis = redis;
+  redis.on('error', (err) => console.error('[Redis] Error:', err));
+  redis.on('connect', () => console.log('[Redis] Connected'));
+
+  redis.connect().catch(console.error);
+  globalForRedis.redis = redis;
+} else {
+  redis = globalForRedis.redis;
+}
+
+export { redis };
 
 // Cache utility functions
 export async function cacheGet<T>(key: string): Promise<T | null> {
