@@ -1,3 +1,4 @@
+// app/(dashboard)/dashboard/page.tsx
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { getAllSubdomains } from '@/lib/subdomains';
@@ -19,6 +20,7 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
+  // getAllSubdomains는 이미 Drizzle을 사용하므로 그대로 사용
   const tenants = await getAllSubdomains();
 
   return (
@@ -60,4 +62,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-

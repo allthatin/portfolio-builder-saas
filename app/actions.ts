@@ -8,7 +8,24 @@ import { db } from '@/lib/db';
 import { tenants, portfolios } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-export function isValidIcon(str: string) {
+// Define action state types
+interface SubdomainActionState {
+  subdomain?: string;
+  icon?: string;
+  displayName?: string;
+  success: boolean;
+  error?: string;
+  message?: string;
+}
+
+interface CachedSubdomainData {
+  emoji: string;
+  displayName: string;
+  tenantId: number;
+  createdAt: number;
+}
+
+export async function isValidIcon(str: string): Promise<boolean> {
   if (str.length > 10) {
     return false;
   }
@@ -25,7 +42,10 @@ export function isValidIcon(str: string) {
   return str.length >= 1 && str.length <= 10;
 }
 
-export async function createSubdomainAction(prevState: any, formData: FormData) {
+export async function createSubdomainAction(
+  prevState: SubdomainActionState | null,
+  formData: FormData
+): Promise<SubdomainActionState> {
   const subdomain = formData.get('subdomain') as string;
   const icon = formData.get('icon') as string;
   const displayName = formData.get('displayName') as string;
@@ -44,7 +64,7 @@ export async function createSubdomainAction(prevState: any, formData: FormData) 
     return { success: false, error: 'Subdomain, icon, and display name are required' };
   }
 
-  if (!isValidIcon(icon)) {
+  if (!(await isValidIcon(icon))) {
     return {
       subdomain,
       icon,
@@ -126,12 +146,14 @@ export async function createSubdomainAction(prevState: any, formData: FormData) 
     });
 
     // Cache subdomain data in Redis
-    await redis.set(`subdomain:${sanitizedSubdomain}`, JSON.stringify({
+    const cacheData: CachedSubdomainData = {
       emoji: icon,
       displayName,
       tenantId: tenant.id,
       createdAt: Date.now(),
-    }));
+    };
+    
+    await redis.set(`subdomain:${sanitizedSubdomain}`, JSON.stringify(cacheData));
 
     revalidatePath('/dashboard');
     
@@ -144,7 +166,10 @@ export async function createSubdomainAction(prevState: any, formData: FormData) 
   }
 }
 
-export async function deleteSubdomainAction(prevState: any, formData: FormData) {
+export async function deleteSubdomainAction(
+  prevState: SubdomainActionState | null,
+  formData: FormData
+): Promise<SubdomainActionState> {
   const subdomain = formData.get('subdomain') as string;
 
   // Check authentication
@@ -180,4 +205,3 @@ export async function deleteSubdomainAction(prevState: any, formData: FormData) 
     return { success: false, error: 'Failed to delete subdomain' };
   }
 }
-
