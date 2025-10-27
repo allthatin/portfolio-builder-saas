@@ -1,6 +1,6 @@
 // lib/subdomains.ts
 import { redis } from '@/lib/redis';
-import { supabaseAdmin } from '@/lib/db/client';
+import { getSupabaseAdmin } from '@/lib/db/client';
 import { getTenantBySlug } from '@/lib/db';
 import type { Tenant } from '@/lib/db/types';
 
@@ -81,6 +81,7 @@ export async function getSubdomainData(slug: string): Promise<SubdomainData | nu
  */
 export async function getAllSubdomains() {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     // Get all tenants from database, ordered by creation date (newest first)
     const { data: allTenants, error } = await supabaseAdmin
       .from('tenants')
@@ -112,6 +113,7 @@ export async function getAllSubdomains() {
 export async function getUserTenants(profileId: string) {
   try {
     // Get tenants where the profile is a member
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: userTenants, error } = await supabaseAdmin
       .from('profiles')
       .select(`
@@ -154,6 +156,7 @@ export async function getUserTenants(profileId: string) {
  */
 export async function getTenantProfiles(tenantId: string) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: profiles, error } = await supabaseAdmin
       .from('profiles')
       .select('id, email, nickname, name, avatar_url, role, is_admin, date_joined')
@@ -204,6 +207,7 @@ export async function invalidateSubdomainCache(slug: string) {
  */
 export async function getTenantWithSettings(slug: string): Promise<Tenant | null> {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: tenant, error } = await supabaseAdmin
       .from('tenants')
       .select('*')

@@ -4,7 +4,7 @@ import { redis } from '@/lib/redis';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { supabaseAdmin } from '@/lib/db/client';
+import { getSupabaseAdmin } from '@/lib/db/client';
 import type { Database } from '@/lib/db/database.types';
 import { isRedirectError } from 'next/dist/client/components/redirect-error'; // ✅ Fixed import
 
@@ -108,7 +108,7 @@ export async function createSubdomainAction(
       error: 'This subdomain is already taken',
     };
   }
-
+  const supabaseAdmin = getSupabaseAdmin();
   // Check if subdomain exists in database
   const { data: existingTenant } = await supabaseAdmin
     .from('tenants')
@@ -242,6 +242,7 @@ export async function deleteSubdomainAction(
   }
 
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: tenant, error: tenantError } = await supabaseAdmin
       .from('tenants')
       .select('id, slug')
