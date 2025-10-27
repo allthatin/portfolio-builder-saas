@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/db/client';
+import { getSupabaseAdmin } from '@/lib/db/client';
 import { searchProfiles } from '@/lib/db';
 import type { 
   ProfileSearchResult, 
@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
 
       // Search market items if requested
       if (type === 'all' || type === 'market') {
+        const supabaseAdmin = getSupabaseAdmin();
         const { data: marketItems, error: marketError } = await supabaseAdmin
           .from('market_items')
           .select('id, title, description, slug')
@@ -79,6 +80,7 @@ export async function GET(request: NextRequest) {
 
       // Search portfolios if requested
       if (type === 'all' || type === 'portfolios') {
+        const supabaseAdmin = getSupabaseAdmin();
         const { data: portfolios, error: portfolioError } = await supabaseAdmin
           .from('portfolios')
           .select('id, content')
@@ -99,6 +101,7 @@ export async function GET(request: NextRequest) {
 
       // Search tenants if requested
       if (type === 'all' || type === 'tenants') {
+        const supabaseAdmin = getSupabaseAdmin();
         const { data: tenants, error: tenantError } = await supabaseAdmin
           .from('tenants')
           .select('id, display_name, slug')

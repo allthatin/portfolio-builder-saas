@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { supabaseAdmin } from '@/lib/db/client';
+import { getSupabaseAdmin } from '@/lib/db/client';
 import { getProfileById } from '@/lib/db';
 import type { SocialProvider } from '@/lib/db/types';
+
 export const dynamic = 'force-dynamic'
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -28,6 +29,7 @@ export async function GET(request: Request) {
 
           if (!existingProfile) {
             // Create new profile
+            const supabaseAdmin = getSupabaseAdmin();
             const { error: insertError } = await supabaseAdmin
               .from('profiles')
               .insert({
@@ -47,6 +49,7 @@ export async function GET(request: Request) {
             }
           } else {
             // Update existing profile
+            const supabaseAdmin = getSupabaseAdmin();
             const { error: updateError } = await supabaseAdmin
               .from('profiles')
               .update({

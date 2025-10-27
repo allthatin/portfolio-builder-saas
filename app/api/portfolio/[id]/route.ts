@@ -1,12 +1,12 @@
 // app/api/portfolio/[id]/route.ts
 import { createClient } from '@/lib/supabase/server';
-import { supabaseAdmin } from '@/lib/db/client';
+import { getSupabaseAdmin } from '@/lib/db/client';
 import { getPortfolioById, getTenantById } from '@/lib/db';
 import type { UpdatePortfolio, Json } from '@/lib/db/types';
 import { NextRequest, NextResponse } from 'next/server';
 // import { redis } from '@/lib/redis'; // ✅ Redis 제거 (Edge에서 작동 안 함)
 
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 interface RouteParams {
@@ -61,7 +61,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (content !== undefined) updateData.content = content;
     if (is_hidden !== undefined) updateData.is_hidden = is_hidden;
     if (media_files !== undefined) updateData.media_files = media_files;
-
+    
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: updatedPortfolio, error } = await supabaseAdmin
       .from('portfolios')
       .update(updateData)
@@ -114,6 +115,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
     const { error } = await supabaseAdmin
       .from('portfolios')
       .delete()
