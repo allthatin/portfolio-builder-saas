@@ -8,7 +8,7 @@ import type {
   Tenant 
 } from '@/lib/db/types';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic'
 interface SearchResultItem {
   type: 'profile' | 'market' | 'portfolio' | 'tenant';
