@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { getAllSubdomains } from '@/lib/subdomains';
 import { SubdomainForm } from '@/components/subdomain-form';
-import { DashboardContent } from './dashboard-content';
+import { DashboardContent } from '../../components/dashboard-content';
 
 export const metadata = {
   title: 'Dashboard | Portfolio Builder',
@@ -27,7 +27,7 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-gray-900">Portfolio Builder</h1>
+          <h1 className="text-xl font-bold text-gray-900">Dashbard</h1>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-600">{user.email}</span>
             <form action="/auth/signout" method="post">

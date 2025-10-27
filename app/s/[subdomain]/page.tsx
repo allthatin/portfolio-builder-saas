@@ -1,3 +1,4 @@
+// app\s\[subdomain]\page.tsx
 import Link from 'next/link';
 import type { Metadata } from 'next/types';
 import { notFound } from 'next/navigation';

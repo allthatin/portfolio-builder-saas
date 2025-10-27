@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { getTenantBySubdomain, getProfileById, getPortfoliosByTenantId } from '@/lib/db';
-import { PortfolioEditor } from './portfolio-editor';
+import { PortfolioEditor } from '../../../../components/portfolio-editor';
 
 interface PageProps {
   params: Promise<{ subdomain: string }>;

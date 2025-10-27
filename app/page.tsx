@@ -1,3 +1,5 @@
+// app\page.tsx
+
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { SearchBar } from '@/components/search-bar';

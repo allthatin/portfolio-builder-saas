@@ -1,7 +1,23 @@
-import type { NextConfig } from "next";
+// next.config.ts
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: '/:path*',
+          has: [
+            {
+              type: 'host',
+              value: '(?<subdomain>.*)\\.(?<domain>.*)',
+            },
+          ],
+          destination: '/s/:subdomain/:path*',
+        },
+      ],
+    };
+  },
 };
 
 export default nextConfig;
