@@ -1,5 +1,5 @@
 // lib/db/index.ts
-import { supabaseAdmin } from './client';
+import { getSupabaseAdmin } from './client';
 import type { 
   Profile, 
   Tenant, 
@@ -11,6 +11,7 @@ import type {
   PortfolioSearchResult
 } from './types';
 
+const supabaseAdmin = getSupabaseAdmin();
 export const db = supabaseAdmin;
 
 // ============================================
