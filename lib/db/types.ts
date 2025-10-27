@@ -2,6 +2,14 @@
 export type { Database, Tables, TablesInsert, TablesUpdate, Enums } from './database.types';
 import type { Database } from './database.types';
 
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+  
 // Convenience type aliases
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type InsertProfile = Database['public']['Tables']['profiles']['Insert'];

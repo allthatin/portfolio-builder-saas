@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/db/client';
-import { getPortfolioById, getTenantById, getUserByProviderId } from '@/lib/db';
-import type { Portfolio } from '@/lib/db/types';
+import { getPortfolioById, getTenantById } from '@/lib/db';
+import type { UpdatePortfolio, Json } from '@/lib/db/types';
 import { NextRequest, NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
 
@@ -13,16 +13,18 @@ interface RouteParams {
   }>;
 }
 
+interface UpdatePortfolioRequest {
+  content?: string | null;
+  is_hidden?: boolean | null;
+  media_files?: Json;
+  essence_metadata?: Json;
+}
+
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const portfolioId = parseInt(id, 10);
 
-    if (isNaN(portfolioId)) {
-      return NextResponse.json({ error: 'Invalid portfolio ID' }, { status: 400 });
-    }
-
-    const supabase = await createClient();
+    const supabase = await createClient(); // ✅ Add await back
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -32,10 +34,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get portfolio and verify ownership
-    const portfolio = await getPortfolioById(portfolioId);
+    const portfolio = await getPortfolioById(id);
 
     if (!portfolio) {
       return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
+    }
+
+    // Check if user is the editor of this portfolio
+    if (portfolio.editor_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const tenant = await getTenantById(portfolio.tenant_id);
@@ -44,28 +51,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
-    const dbUser = await getUserByProviderId(user.id);
-
-    if (!dbUser || tenant.owner_id !== dbUser.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     // Update portfolio
-    const body = await request.json();
-    const { title, description, content, template, published, seo_meta } = body;
+    const body = await request.json() as UpdatePortfolioRequest;
+    const { content, is_hidden, media_files } = body;
 
-    const updateData: any = {};
-    if (title !== undefined) updateData.title = title;
-    if (description !== undefined) updateData.description = description;
+    const updateData: UpdatePortfolio = {
+      updated_at: new Date().toISOString(),
+    };
+    
     if (content !== undefined) updateData.content = content;
-    if (template !== undefined) updateData.template = template;
-    if (published !== undefined) updateData.published = published;
-    if (seo_meta !== undefined) updateData.seo_meta = seo_meta;
+    if (is_hidden !== undefined) updateData.is_hidden = is_hidden;
+    if (media_files !== undefined) updateData.media_files = media_files;
 
     const { data: updatedPortfolio, error } = await supabaseAdmin
       .from('portfolios')
       .update(updateData)
-      .eq('id', portfolioId)
+      .eq('id', id)
       .select()
       .single();
 
@@ -75,10 +76,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Invalidate cache
     try {
-      await redis.del(`subdomain:${tenant.subdomain}`);
+      await redis.del(`subdomain:${tenant.slug}`);
       await redis.del(`portfolio:tenant:${tenant.id}`);
-    } catch (error) {
-      console.error('Redis cache invalidation error:', error);
+    } catch (cacheError) {
+      console.error('Redis cache invalidation error:', cacheError);
     }
 
     return NextResponse.json(updatedPortfolio);
@@ -91,13 +92,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const portfolioId = parseInt(id, 10);
 
-    if (isNaN(portfolioId)) {
-      return NextResponse.json({ error: 'Invalid portfolio ID' }, { status: 400 });
-    }
-
-    const supabase = await createClient();
+    const supabase = await createClient(); // ✅ Add await back
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -107,10 +103,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get portfolio and verify ownership
-    const portfolio = await getPortfolioById(portfolioId);
+    const portfolio = await getPortfolioById(id);
 
     if (!portfolio) {
       return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
+    }
+
+    // Check if user is the editor of this portfolio
+    if (portfolio.editor_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const tenant = await getTenantById(portfolio.tenant_id);
@@ -119,17 +120,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
-    const dbUser = await getUserByProviderId(user.id);
-
-    if (!dbUser || tenant.owner_id !== dbUser.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     // Delete portfolio
     const { error } = await supabaseAdmin
       .from('portfolios')
       .delete()
-      .eq('id', portfolioId);
+      .eq('id', id);
 
     if (error) {
       throw error;
@@ -137,10 +132,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // Invalidate cache
     try {
-      await redis.del(`subdomain:${tenant.subdomain}`);
+      await redis.del(`subdomain:${tenant.slug}`);
       await redis.del(`portfolio:tenant:${tenant.id}`);
-    } catch (error) {
-      console.error('Redis cache invalidation error:', error);
+    } catch (cacheError) {
+      console.error('Redis cache invalidation error:', cacheError);
     }
 
     return NextResponse.json({ success: true });
@@ -149,4 +144,3 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Failed to delete portfolio' }, { status: 500 });
   }
 }
-
