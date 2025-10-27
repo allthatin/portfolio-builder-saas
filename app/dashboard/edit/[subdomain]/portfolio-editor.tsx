@@ -3,29 +3,37 @@
 import { useState } from 'react';
 import { ImageUpload } from '@/components/image-upload';
 import { useRouter } from 'next/navigation';
+import { parseMediaFiles, type Portfolio, type MediaFile } from '@/lib/db/types';
 
 interface PortfolioEditorProps {
   subdomain: string;
-  portfolio: {
-    id: number;
-    title: string;
-    description: string;
-    content: string;
-    published: boolean;
-  };
+  portfolio: Portfolio;
 }
 
 export function PortfolioEditor({ subdomain, portfolio }: PortfolioEditorProps) {
   const router = useRouter();
   const [formData, setFormData] = useState({
-    title: portfolio.title,
-    description: portfolio.description,
-    content: portfolio.content,
-    published: portfolio.published,
+    content: portfolio.content || '',
+    is_hidden: portfolio.is_hidden ?? false,
+    media_files: parseMediaFiles(portfolio.media_files),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  const handleMediaUpload = (mediaFile: MediaFile) => {
+    setFormData({
+      ...formData,
+      media_files: [...formData.media_files, mediaFile],
+    });
+  };
+
+  const handleRemoveMedia = (id: string) => {
+    setFormData({
+      ...formData,
+      media_files: formData.media_files.filter((file) => file.id !== id),
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,10 +60,53 @@ export function PortfolioEditor({ subdomain, portfolio }: PortfolioEditorProps) 
       
       // Revalidate the portfolio page
       await fetch(`/api/revalidate?path=/s/${subdomain}`, { method: 'POST' });
+      
+      // Refresh the page data
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save portfolio');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const renderMediaPreview = (file: MediaFile) => {
+    switch (file.type) {
+      case 'image':
+        return (
+          <img 
+            src={file.url} 
+            alt={file.name} 
+            className="w-full h-full object-cover" 
+          />
+        );
+      case 'video':
+        return (
+          <video 
+            src={file.url} 
+            controls 
+            className="w-full h-full object-cover"
+          />
+        );
+      case 'audio':
+        return (
+          <div className="flex items-center justify-center w-full h-full bg-gray-100">
+            <audio src={file.url} controls className="w-full px-4" />
+          </div>
+        );
+      case 'document':
+        return (
+          <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100 p-4">
+            <span className="text-4xl mb-2">📄</span>
+            <span className="text-xs text-gray-600 text-center break-all">{file.name}</span>
+          </div>
+        );
+      default:
+        return (
+          <div className="flex items-center justify-center w-full h-full bg-gray-100">
+            <span className="text-4xl">📎</span>
+          </div>
+        );
     }
   };
 
@@ -64,7 +115,7 @@ export function PortfolioEditor({ subdomain, portfolio }: PortfolioEditorProps) 
       <div className="bg-white rounded-2xl shadow-lg p-8">
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Edit Your Portfolio</h2>
-          <p className="text-gray-600">Update your portfolio content and settings</p>
+          <p className="text-gray-600">Update your portfolio content and media</p>
         </div>
 
         {error && (
@@ -81,66 +132,57 @@ export function PortfolioEditor({ subdomain, portfolio }: PortfolioEditorProps) 
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-              Title
-            </label>
-            <input
-              type="text"
-              id="title"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-              Description
-            </label>
-            <textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
             <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
-              Content
+              Portfolio Content
             </label>
             <textarea
               id="content"
               value={formData.content}
               onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-              rows={12}
-              placeholder="Write your portfolio content here..."
+              rows={20}
+              placeholder="Write your portfolio content here... (Supports markdown)"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
             />
             <p className="mt-2 text-sm text-gray-500">Supports plain text and markdown</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Cover Image</label>
-            <ImageUpload
-              onUpload={(url, path) => {
-                console.log('Image uploaded:', url, path);
-                // You can store this in the portfolio metadata
-              }}
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Media Files
+            </label>
+            <ImageUpload onUpload={handleMediaUpload} />
+            
+            {/* Media Gallery */}
+            {formData.media_files.length > 0 && (
+              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                {formData.media_files.map((file) => (
+                  <div key={file.id} className="relative group">
+                    <div className="w-full h-32 rounded-lg overflow-hidden border-2 border-gray-200">
+                      {renderMediaPreview(file)}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMedia(file.id)}
+                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ×
+                    </button>
+                    <p className="text-xs text-gray-500 mt-1 truncate">{file.name}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
-              id="published"
-              checked={formData.published}
-              onChange={(e) => setFormData({ ...formData, published: e.target.checked })}
+              id="is_hidden"
+              checked={!formData.is_hidden}
+              onChange={(e) => setFormData({ ...formData, is_hidden: !e.target.checked })}
               className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
-            <label htmlFor="published" className="text-sm font-medium text-gray-700">
+            <label htmlFor="is_hidden" className="text-sm font-medium text-gray-700">
               Publish portfolio (make it visible to everyone)
             </label>
           </div>
@@ -166,4 +208,3 @@ export function PortfolioEditor({ subdomain, portfolio }: PortfolioEditorProps) 
     </div>
   );
 }
-

@@ -1,142 +1,135 @@
 // Database types for Supabase PostgreSQL
-// These types match the schema defined in supabase/migrations/001_initial_schema.sql
+export type { Database, Tables, TablesInsert, TablesUpdate, Enums } from './database.types';
+import type { Database } from './database.types';
 
-export interface User {
-  id: number;
-  email: string;
-  name: string | null;
-  avatar_url: string | null;
-  provider: string;
-  provider_id: string;
-  created_at: string;
-  updated_at: string;
+// Convenience type aliases
+export type Profile = Database['public']['Tables']['profiles']['Row'];
+export type InsertProfile = Database['public']['Tables']['profiles']['Insert'];
+export type UpdateProfile = Database['public']['Tables']['profiles']['Update'];
+
+export type Tenant = Database['public']['Tables']['tenants']['Row'];
+export type InsertTenant = Database['public']['Tables']['tenants']['Insert'];
+export type UpdateTenant = Database['public']['Tables']['tenants']['Update'];
+
+export type Portfolio = Database['public']['Tables']['portfolios']['Row'];
+export type InsertPortfolio = Database['public']['Tables']['portfolios']['Insert'];
+export type UpdatePortfolio = Database['public']['Tables']['portfolios']['Update'];
+
+export type MarketItem = Database['public']['Tables']['market_items']['Row'];
+export type InsertMarketItem = Database['public']['Tables']['market_items']['Insert'];
+export type UpdateMarketItem = Database['public']['Tables']['market_items']['Update'];
+
+export type PaymentRecord = Database['public']['Tables']['payment_records']['Row'];
+export type InsertPaymentRecord = Database['public']['Tables']['payment_records']['Insert'];
+export type UpdatePaymentRecord = Database['public']['Tables']['payment_records']['Update'];
+
+export type Follow = Database['public']['Tables']['follows']['Row'];
+export type InsertFollow = Database['public']['Tables']['follows']['Insert'];
+
+export type Like = Database['public']['Tables']['likes']['Row'];
+export type InsertLike = Database['public']['Tables']['likes']['Insert'];
+
+export type UserBlock = Database['public']['Tables']['user_blocks']['Row'];
+export type InsertUserBlock = Database['public']['Tables']['user_blocks']['Insert'];
+
+// Enums
+export type SocialProvider = Database['public']['Enums']['social_provider'];
+export type BusinessType = Database['public']['Enums']['business_type'];
+export type BusinessVerificationStatus = Database['public']['Enums']['business_verification_status'];
+export type PaymentStatus = Database['public']['Enums']['payment_status'];
+export type PaymentType = Database['public']['Enums']['payment_type'];
+export type PricingType = Database['public']['Enums']['pricing_type'];
+export type LikeAction = Database['public']['Enums']['like_action'];
+
+// Tenant settings type - define the structure of settings JSONB
+export interface TenantSettings {
+  theme?: {
+    primaryColor?: string;
+    secondaryColor?: string;
+    fontFamily?: string;
+  };
+  features?: {
+    enableComments?: boolean;
+    enableAnalytics?: boolean;
+    enableNewsletter?: boolean;
+  };
+  social?: {
+    twitter?: string;
+    github?: string;
+    linkedin?: string;
+    website?: string;
+  };
+  customCss?: string;
 }
 
-export interface InsertUser {
-  email: string;
-  name?: string | null;
-  avatar_url?: string | null;
-  provider: string;
-  provider_id: string;
+// Portfolio media files type
+// Portfolio media files type
+// Portfolio media files type
+export interface MediaFile {
+  id: string;
+  url: string;
+  path?: string;
+  type: 'image' | 'video' | 'audio' | 'document';
+  name: string;
+  size?: number;
+  thumbnail?: string;
 }
 
-export interface Tenant {
-  id: number;
-  subdomain: string;
-  display_name: string;
-  owner_id: number;
-  emoji: string | null;
-  custom_domain: string | null;
-  settings: Record<string, any>;
-  created_at: string;
-  updated_at: string;
+// Type guard to validate MediaFile
+export function isMediaFile(obj: MediaFile): obj is MediaFile {
+  return (
+    obj &&
+    typeof obj === 'object' &&
+    typeof obj.id === 'string' &&
+    typeof obj.url === 'string' &&
+    typeof obj.name === 'string' &&
+    ['image', 'video', 'audio', 'document'].includes(obj.type)
+  );
 }
 
-export interface InsertTenant {
-  subdomain: string;
-  display_name: string;
-  owner_id: number;
-  emoji?: string | null;
-  custom_domain?: string | null;
-  settings?: Record<string, any>;
+// Helper to safely parse media files from JSON
+export function parseMediaFiles(json: unknown): MediaFile[] {
+  if (!json) return [];
+  if (!Array.isArray(json)) return [];
+  return json.filter(isMediaFile);
 }
 
-export interface Portfolio {
-  id: number;
-  tenant_id: number;
-  title: string;
-  description: string | null;
-  content: string | null;
-  template: string;
-  published: boolean;
-  seo_meta: Record<string, any>;
-  content_embedding: number[] | null;
-  created_at: string;
-  updated_at: string;
+
+
+// Market item AI metadata type
+export interface MarketItemAIMetadata {
+  tags?: string[];
+  category?: string;
+  extractedFeatures?: string[];
+  qualityScore?: number;
 }
 
-export interface InsertPortfolio {
-  tenant_id: number;
-  title: string;
-  description?: string | null;
-  content?: string | null;
-  template?: string;
-  published?: boolean;
-  seo_meta?: Record<string, any>;
-  content_embedding?: number[] | null;
+// Profile persona metadata type
+export interface PersonaMetadata {
+  interests?: string[];
+  skills?: string[];
+  personality?: string[];
+  goals?: string[];
 }
 
-export interface SearchResult {
-  result_type: 'tenant' | 'portfolio';
-  id: number;
-  subdomain: string;
-  display_name: string;
-  emoji: string | null;
-  title: string | null;
-  description: string | null;
+// Search result types
+export interface ProfileSearchResult {
+  id: string;
+  nickname: string;
+  job: string;
+  description: string;
   rank: number;
 }
 
-// Database schema type for Supabase client
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[];
-
-export interface Database {
-  public: {
-    Tables: {
-      users: {
-        Row: User;
-        Insert: InsertUser;
-        Update: Partial<InsertUser>;
-        Relationships: [];
-      };
-      tenants: {
-        Row: Tenant;
-        Insert: InsertTenant;
-        Update: Partial<InsertTenant>;
-        Relationships: [
-          {
-            foreignKeyName: "tenants_owner_id_fkey";
-            columns: ["owner_id"];
-            referencedRelation: "users";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-      portfolios: {
-        Row: Portfolio;
-        Insert: InsertPortfolio;
-        Update: Partial<InsertPortfolio>;
-        Relationships: [
-          {
-            foreignKeyName: "portfolios_tenant_id_fkey";
-            columns: ["tenant_id"];
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-    };
-    Views: {
-      [_ in never]: never;
-    };
-    Functions: {
-      search_portfolios_and_tenants: {
-        Args: { search_query: string };
-        Returns: SearchResult[];
-      };
-    };
-    Enums: {
-      [_ in never]: never;
-    };
-    CompositeTypes: {
-      [_ in never]: never;
-    };
-  };
+export interface MarketSearchResult {
+  id: string;
+  title: string;
+  description: string;
+  score: number;
 }
 
+export interface PortfolioSearchResult {
+  id: string;
+  content: string;
+  score: number;
+}

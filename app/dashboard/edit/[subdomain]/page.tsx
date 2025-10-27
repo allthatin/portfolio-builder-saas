@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { getTenantBySubdomain, getUserByProviderId, getPortfoliosByTenantId } from '@/lib/db';
+import { getTenantBySubdomain, getProfileById, getPortfoliosByTenantId } from '@/lib/db';
 import { PortfolioEditor } from './portfolio-editor';
 
 interface PageProps {
@@ -19,23 +19,22 @@ export default async function EditPortfolioPage({ params }: PageProps) {
     redirect('/login');
   }
 
-  // Get tenant
   const tenant = await getTenantBySubdomain(subdomain);
-
   if (!tenant) {
     redirect('/dashboard');
   }
 
-  // Get user from database
-  const dbUser = await getUserByProviderId(user.id);
+  const profile = await getProfileById(user.id);
+  if (!profile) {
+    redirect('/login');
+  }
 
-  if (!dbUser || tenant.owner_id !== dbUser.id) {
+  if (profile.tenant_id !== tenant.id) {
     redirect('/dashboard');
   }
 
-  // Get portfolio
   const portfolios = await getPortfoliosByTenantId(tenant.id);
-  const portfolio = portfolios[0];
+  const portfolio = portfolios.find(p => p.editor_id === user.id) || portfolios[0];
 
   if (!portfolio) {
     redirect('/dashboard');
@@ -56,18 +55,8 @@ export default async function EditPortfolioPage({ params }: PageProps) {
       </nav>
 
       <main className="container mx-auto px-4 py-12">
-        <PortfolioEditor
-          subdomain={subdomain}
-          portfolio={{
-            id: portfolio.id,
-            title: portfolio.title,
-            description: portfolio.description || '',
-            content: portfolio.content || '',
-            published: portfolio.published,
-          }}
-        />
+        <PortfolioEditor subdomain={subdomain} portfolio={portfolio} />
       </main>
     </div>
   );
 }
-

@@ -34,14 +34,21 @@ export { redis };
 export async function cacheGet<T>(key: string): Promise<T | null> {
   try {
     const value = await redis.get(key);
-    return value ? JSON.parse(value) : null;
+    if (!value || typeof value !== 'string') {
+      return null;
+    }
+    return JSON.parse(value) as T;
   } catch (error) {
     console.error(`[Redis] Error getting key ${key}:`, error);
     return null;
   }
 }
 
-export async function cacheSet(key: string, value: any, ttlSeconds?: number): Promise<void> {
+export async function cacheSet<T>(
+  key: string, 
+  value: T, 
+  ttlSeconds?: number
+): Promise<void> {
   try {
     const serialized = JSON.stringify(value);
     if (ttlSeconds) {
@@ -61,4 +68,3 @@ export async function cacheDel(key: string): Promise<void> {
     console.error(`[Redis] Error deleting key ${key}:`, error);
   }
 }
-

@@ -6,9 +6,10 @@ import Link from 'next/link';
 import { protocol, rootDomain } from '@/lib/utils';
 
 type Tenant = {
-  subdomain: string;
-  emoji: string;
+  slug: string;
   displayName: string;
+  tenantId: string;
+  plan: string;
   createdAt: number;
 };
 
@@ -30,7 +31,7 @@ export function DashboardContent({
         ) : (
           <div className="space-y-3">
             {tenants.map((tenant) => (
-              <TenantCard key={tenant.subdomain} tenant={tenant} />
+              <TenantCard key={tenant.tenantId} tenant={tenant} />
             ))}
           </div>
         )}
@@ -41,7 +42,7 @@ export function DashboardContent({
         <ul className="text-sm text-blue-800 space-y-1">
           <li>• Your portfolio will be available at yourname.{rootDomain}</li>
           <li>• You can customize your portfolio content after creation</li>
-          <li>• Choose an emoji that represents you or your brand</li>
+          <li>• Choose a memorable subdomain that represents you or your brand</li>
         </ul>
       </div>
     </div>
@@ -50,32 +51,35 @@ export function DashboardContent({
 
 function TenantCard({ tenant }: { tenant: Tenant }) {
   const [state, formAction, isPending] = useActionState(deleteSubdomainAction, null);
-  const url = `${protocol}://${tenant.subdomain}.${rootDomain}`;
+  const url = `${protocol}://${tenant.slug}.${rootDomain}`;
 
   return (
     <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
       <div className="flex items-center gap-3">
-        <div className="text-3xl">{tenant.emoji}</div>
+        <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg text-white font-bold text-lg">
+          {tenant.displayName.charAt(0).toUpperCase()}
+        </div>
         <div>
           <Link
             href={url}
             target="_blank"
             className="font-medium text-blue-600 hover:text-blue-700"
           >
-            {tenant.subdomain}.{rootDomain}
+            {tenant.slug}.{rootDomain}
           </Link>
           <p className="text-sm text-gray-500">{tenant.displayName}</p>
+          <p className="text-xs text-gray-400 capitalize">{tenant.plan} Plan</p>
         </div>
       </div>
       <div className="flex items-center gap-2">
         <Link
-          href={`/dashboard/edit/${tenant.subdomain}`}
+          href={`/dashboard/edit/${tenant.slug}`}
           className="px-3 py-1 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
         >
           Edit
         </Link>
         <form action={formAction}>
-          <input type="hidden" name="subdomain" value={tenant.subdomain} />
+          <input type="hidden" name="subdomain" value={tenant.slug} />
           <button
             type="submit"
             disabled={isPending}
@@ -88,4 +92,3 @@ function TenantCard({ tenant }: { tenant: Tenant }) {
     </div>
   );
 }
-

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "types:generate": "npx supabase gen types typescript --project-id ffinyivolifacijjuake --access-token ${SUPABASE_ACCESS_TOKEN:-$SUPABASE_ACCESS_TOKEN} > lib/db/database.types.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",
@@ -23,8 +24,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.0.0",
+    "supabase": "^1.200.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
 }
-

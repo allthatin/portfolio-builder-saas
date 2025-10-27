@@ -5,10 +5,13 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/db/client';
-import { getUserByProviderId, getTenantBySubdomain } from '@/lib/db';
-import type { Tenant, Portfolio } from '@/lib/db/types';
+import type { Database } from '@/lib/db/database.types';
+import { isRedirectError } from 'next/dist/client/components/redirect-error'; // ✅ Fixed import
 
-// Define action state types
+// ============================================
+// TYPE DEFINITIONS
+// ============================================
+
 interface SubdomainActionState {
   subdomain?: string;
   icon?: string;
@@ -21,9 +24,13 @@ interface SubdomainActionState {
 interface CachedSubdomainData {
   emoji: string;
   displayName: string;
-  tenantId: number;
+  tenantId: string;
   createdAt: number;
 }
+
+// ============================================
+// VALIDATION HELPERS
+// ============================================
 
 export async function isValidIcon(str: string): Promise<boolean> {
   if (str.length > 10) {
@@ -41,6 +48,10 @@ export async function isValidIcon(str: string): Promise<boolean> {
 
   return str.length >= 1 && str.length <= 10;
 }
+
+// ============================================
+// SUBDOMAIN ACTIONS
+// ============================================
 
 export async function createSubdomainAction(
   prevState: SubdomainActionState | null,
@@ -99,7 +110,11 @@ export async function createSubdomainAction(
   }
 
   // Check if subdomain exists in database
-  const existingTenant = await getTenantBySubdomain(sanitizedSubdomain);
+  const { data: existingTenant } = await supabaseAdmin
+    .from('tenants')
+    .select('id, slug')
+    .eq('slug', sanitizedSubdomain)
+    .single();
 
   if (existingTenant) {
     return {
@@ -111,43 +126,71 @@ export async function createSubdomainAction(
     };
   }
 
-  // Get user from database
-  const dbUser = await getUserByProviderId(user.id);
+  // Get user profile from database
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email, nickname')
+    .eq('id', user.id)
+    .single();
 
-  if (!dbUser) {
-    return { success: false, error: 'User not found in database' };
+  if (profileError || !profile) {
+    return { success: false, error: 'User profile not found in database' };
   }
 
   try {
+    // Type-safe tenant insert using generated types
+    type TenantInsert = Database['public']['Tables']['tenants']['Insert'];
+    
+    const tenantData: TenantInsert = {
+      slug: sanitizedSubdomain,
+      display_name: displayName,
+      settings: {
+        emoji: icon,
+      },
+      plan: 'free',
+    };
+
     // Create tenant in database
     const { data: tenant, error: tenantError } = await supabaseAdmin
       .from('tenants')
-      .insert({
-        subdomain: sanitizedSubdomain,
-        display_name: displayName,
-        owner_id: dbUser.id,
-        emoji: icon,
-      })
+      .insert(tenantData)
       .select()
       .single();
 
     if (tenantError || !tenant) {
+      console.error('Tenant creation error:', tenantError);
       throw tenantError || new Error('Failed to create tenant');
     }
 
+    // Update user profile with tenant_id
+    const { error: updateProfileError } = await supabaseAdmin
+      .from('profiles')
+      .update({ tenant_id: tenant.id })
+      .eq('id', user.id);
+
+    if (updateProfileError) {
+      console.error('Profile update error:', updateProfileError);
+    }
+
     // Create default portfolio
-    const { error: portfolioError } = await supabaseAdmin
-      .from('portfolios')
-      .insert({
-        tenant_id: tenant.id,
+    type PortfolioInsert = Database['public']['Tables']['portfolios']['Insert'];
+    
+    const portfolioData: PortfolioInsert = {
+      tenant_id: tenant.id,
+      content: JSON.stringify({
         title: displayName,
         description: `Welcome to ${displayName}'s portfolio`,
-        template: 'default',
-        published: true,
-      });
+      }),
+      editor_id: user.id,
+      is_hidden: false,
+    };
+
+    const { error: portfolioError } = await supabaseAdmin
+      .from('portfolios')
+      .insert(portfolioData);
 
     if (portfolioError) {
-      throw portfolioError;
+      console.error('Portfolio creation error:', portfolioError);
     }
 
     // Cache subdomain data in Redis
@@ -158,16 +201,28 @@ export async function createSubdomainAction(
       createdAt: Date.now(),
     };
     
-    await redis.set(`subdomain:${sanitizedSubdomain}`, JSON.stringify(cacheData));
+    await redis.set(
+      `subdomain:${sanitizedSubdomain}`, 
+      JSON.stringify(cacheData),
+      { EX: 60 * 60 * 24 * 7 }
+    );
 
     revalidatePath('/dashboard');
     
     const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
     const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+    
     redirect(`${protocol}://${sanitizedSubdomain}.${rootDomain}`);
-  } catch (error) {
+  } catch (error: unknown) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+    
     console.error('Error creating subdomain:', error);
-    return { success: false, error: 'Failed to create subdomain' };
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to create subdomain' 
+    };
   }
 }
 
@@ -177,7 +232,6 @@ export async function deleteSubdomainAction(
 ): Promise<SubdomainActionState> {
   const subdomain = formData.get('subdomain') as string;
 
-  // Check authentication
   const supabase = await createClient();
   const {
     data: { user },
@@ -188,35 +242,49 @@ export async function deleteSubdomainAction(
   }
 
   try {
-    // Delete from Redis
-    await redis.del(`subdomain:${subdomain}`);
+    const { data: tenant, error: tenantError } = await supabaseAdmin
+      .from('tenants')
+      .select('id, slug')
+      .eq('slug', subdomain)
+      .single();
 
-    // Delete from database (portfolios will be cascade deleted)
-    const tenant = await getTenantBySubdomain(subdomain);
-
-    if (tenant) {
-      // Verify ownership
-      const dbUser = await getUserByProviderId(user.id);
-      if (!dbUser || tenant.owner_id !== dbUser.id) {
-        return { success: false, error: 'You do not have permission to delete this subdomain' };
-      }
-
-      // Delete tenant (portfolios will be cascade deleted due to foreign key constraint)
-      const { error } = await supabaseAdmin
-        .from('tenants')
-        .delete()
-        .eq('id', tenant.id);
-
-      if (error) {
-        throw error;
-      }
+    if (tenantError || !tenant) {
+      return { success: false, error: 'Subdomain not found' };
     }
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('id, tenant_id')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile || profile.tenant_id !== tenant.id) {
+      return { success: false, error: 'You do not have permission to delete this subdomain' };
+    }
+
+    const { error: deleteError } = await supabaseAdmin
+      .from('tenants')
+      .delete()
+      .eq('id', tenant.id);
+
+    if (deleteError) {
+      console.error('Delete error:', deleteError);
+      throw deleteError;
+    }
+
+    await redis.del(`subdomain:${subdomain}`);
 
     revalidatePath('/dashboard');
     return { success: true, message: 'Domain deleted successfully' };
   } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+    
     console.error('Error deleting subdomain:', error);
-    return { success: false, error: 'Failed to delete subdomain' };
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to delete subdomain' 
+    };
   }
 }
-
