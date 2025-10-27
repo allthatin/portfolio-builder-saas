@@ -1,12 +1,14 @@
+// app/api/portfolio/[id]/route.ts
 import { createClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/db/client';
 import { getPortfolioById, getTenantById } from '@/lib/db';
 import type { UpdatePortfolio, Json } from '@/lib/db/types';
 import { NextRequest, NextResponse } from 'next/server';
-import { redis } from '@/lib/redis';
+// import { redis } from '@/lib/redis'; // ✅ Redis 제거 (Edge에서 작동 안 함)
 
-export const runtime = 'edge';
+export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
+
 interface RouteParams {
   params: Promise<{
     id: string;
@@ -24,7 +26,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
 
-    const supabase = await createClient(); // ✅ Add await back
+    const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -33,14 +35,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get portfolio and verify ownership
     const portfolio = await getPortfolioById(id);
 
     if (!portfolio) {
       return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
     }
 
-    // Check if user is the editor of this portfolio
     if (portfolio.editor_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -51,7 +51,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
-    // Update portfolio
     const body = await request.json() as UpdatePortfolioRequest;
     const { content, is_hidden, media_files } = body;
 
@@ -74,13 +73,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       throw error;
     }
 
-    // Invalidate cache
-    try {
-      await redis.del(`subdomain:${tenant.slug}`);
-      await redis.del(`portfolio:tenant:${tenant.id}`);
-    } catch (cacheError) {
-      console.error('Redis cache invalidation error:', cacheError);
-    }
+    // ✅ Redis 캐시 무효화 제거 (Edge Runtime에서 작동 안 함)
+    // Edge Runtime에서는 revalidatePath/revalidateTag 사용
+    // import { revalidatePath } from 'next/cache'
+    // revalidatePath(`/${tenant.slug}`)
 
     return NextResponse.json(updatedPortfolio);
   } catch (error) {
@@ -93,7 +89,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
 
-    const supabase = await createClient(); // ✅ Add await back
+    const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -102,14 +98,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get portfolio and verify ownership
     const portfolio = await getPortfolioById(id);
 
     if (!portfolio) {
       return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 });
     }
 
-    // Check if user is the editor of this portfolio
     if (portfolio.editor_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -120,7 +114,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
-    // Delete portfolio
     const { error } = await supabaseAdmin
       .from('portfolios')
       .delete()
@@ -128,14 +121,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     if (error) {
       throw error;
-    }
-
-    // Invalidate cache
-    try {
-      await redis.del(`subdomain:${tenant.slug}`);
-      await redis.del(`portfolio:tenant:${tenant.id}`);
-    } catch (cacheError) {
-      console.error('Redis cache invalidation error:', cacheError);
     }
 
     return NextResponse.json({ success: true });

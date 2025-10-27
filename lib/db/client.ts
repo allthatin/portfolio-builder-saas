@@ -1,3 +1,4 @@
+// lib\db\client.ts
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/db/types';
 
