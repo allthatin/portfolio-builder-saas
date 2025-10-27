@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/db/client';
-import { getUserByProviderId } from '@/lib/db';
-import type { User } from '@/lib/db/types';
+import { getProfileById } from '@/lib/db';
+import type { SocialProvider } from '@/lib/db/types';
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -18,42 +18,48 @@ export async function GET(request: Request) {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // Upsert user to database
+        // Upsert user to profiles table
         const provider = user.app_metadata.provider || 'google';
         const providerId = user.id;
 
         try {
-          // Check if user exists
-          const existingUser = await getUserByProviderId(providerId);
+          // Check if profile exists
+          const existingProfile = await getProfileById(providerId);
 
-          if (!existingUser) {
-            // Create new user
+          if (!existingProfile) {
+            // Create new profile
             const { error: insertError } = await supabaseAdmin
-              .from('users')
+              .from('profiles')
               .insert({
+                id: providerId,
                 email: user.email!,
                 name: user.user_metadata.full_name || user.user_metadata.name || null,
+                nickname: user.user_metadata.full_name || user.user_metadata.name || null,
                 avatar_url: user.user_metadata.avatar_url || null,
-                provider,
-                provider_id: providerId,
+                provider: provider as SocialProvider,
+                role: 'user',
+                date_joined: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
               });
 
             if (insertError) {
-              console.error('[Auth] Error creating user:', insertError);
+              console.error('[Auth] Error creating profile:', insertError);
             }
           } else {
-            // Update existing user
+            // Update existing profile
             const { error: updateError } = await supabaseAdmin
-              .from('users')
+              .from('profiles')
               .update({
                 email: user.email!,
                 name: user.user_metadata.full_name || user.user_metadata.name || null,
+                nickname: user.user_metadata.full_name || user.user_metadata.name || null,
                 avatar_url: user.user_metadata.avatar_url || null,
+                updated_at: new Date().toISOString(),
               })
-              .eq('provider_id', providerId);
+              .eq('id', providerId);
 
             if (updateError) {
-              console.error('[Auth] Error updating user:', updateError);
+              console.error('[Auth] Error updating profile:', updateError);
             }
           }
         } catch (dbError) {
@@ -77,4 +83,3 @@ export async function GET(request: Request) {
   // Return to error page with instructions
   return NextResponse.redirect(`${origin}/auth/error`);
 }
-
