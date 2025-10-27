@@ -9,7 +9,7 @@ import type {
 } from '@/lib/db/types';
 
 export const runtime = 'edge';
-
+export const dynamic = 'force-dynamic'
 interface SearchResultItem {
   type: 'profile' | 'market' | 'portfolio' | 'tenant';
   id: string;
