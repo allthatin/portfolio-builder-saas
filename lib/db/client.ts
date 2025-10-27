@@ -2,12 +2,14 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/db/types';
 
-let cachedClient: ReturnType<typeof createClient<Database>> | null = null;
+// ✅ 전역 변수로 캐싱 (import 시점에 실행 안 됨)
+const globalForSupabase = globalThis as unknown as {
+  supabase: ReturnType<typeof createClient<Database>> | undefined;
+};
 
 export function getSupabaseAdmin() {
-  // 런타임에만 실행됨
-  if (cachedClient) {
-    return cachedClient;
+  if (globalForSupabase.supabase) {
+    return globalForSupabase.supabase;
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,16 +19,21 @@ export function getSupabaseAdmin() {
     throw new Error(
       `Missing Supabase environment variables:\n` +
       `NEXT_PUBLIC_SUPABASE_URL: ${supabaseUrl ? '✓' : '✗'}\n` +
-      `SUPABASE_SERVICE_ROLE_KEY: ${supabaseServiceKey ? '✓' : '✗'}`
+      `SUPABASE_SERVICE_ROLE_KEY: ${supabaseServiceKey ? '✓' : '✗'}\n` +
+      `Available env keys: ${Object.keys(process.env).filter(k => k.includes('SUPABASE')).join(', ')}`
     );
   }
 
-  cachedClient = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+  const client = createClient<Database>(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
   });
 
-  return cachedClient;
+  if (process.env.NODE_ENV !== 'production') {
+    globalForSupabase.supabase = client;
+  }
+
+  return client;
 }
